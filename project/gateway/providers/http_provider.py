@@ -1,146 +1,205 @@
 """
-http_provider.py
+Base HTTP Provider
 
-Provides a reusable HTTP implementation for cloud-based LLM providers.
+This class implements the common HTTP workflow shared by all
+LLM providers.
 
-This class centralizes HTTP communication so individual providers only
-need to translate requests and responses between the gateway schema and
-their respective APIs.
+Every provider only needs to implement:
+
+    - get_endpoint()
+    - build_payload()
+    - parse_response()
+
+Everything else (authentication, HTTP requests, response status
+checking, etc.) is handled here.
 """
 
+from project.gateway.schemas import response
 from abc import abstractmethod
 
 import httpx
 
 from project.gateway.providers.base import BaseProvider
+from project.gateway.schemas.request import ChatRequest
+from project.gateway.schemas.response import ChatResponse
 
 
 class BaseHTTPProvider(BaseProvider):
     """
-    Base class for providers that communicate over HTTP.
+    Base class for all HTTP-based providers.
 
-    Responsibilities:
-        - Manage the HTTP client.
-        - Send GET and POST requests.
-        - Apply provider-specific headers.
-        - Handle HTTP errors.
+    Handles:
+        - HTTP client
+        - Authorization
+        - Sending requests
+        - Error checking
 
-    Child classes are responsible only for translating request and
-    response formats.
+    Leaves provider-specific request/response translation
+    to subclasses.
     """
+
+    BASE_URL: str = ""
 
     def __init__(
         self,
-        base_url: str,
         api_key: str,
-        timeout: float = 30.0,
-    ) -> None:
-        self.base_url = base_url.rstrip("/")
-        self.api_key = api_key
+        timeout: float = 60.0,
+    ):
+        super().__init__(api_key)
 
-        # Reuse a single AsyncClient for all requests.
-        self.client = httpx.AsyncClient(timeout=timeout)
+        self.client = httpx.AsyncClient(
+            base_url=self.BASE_URL,
+            timeout=timeout,
+        )
+
+    # ---------------------------------------------------------
+    # Abstract methods every provider must implement
+    # ---------------------------------------------------------
 
     @abstractmethod
-    def _headers(self) -> dict[str, str]:
+    def get_endpoint(
+        self,
+        request: ChatRequest,
+    ) -> str:
         """
-        Return provider-specific HTTP headers.
-
-        Examples:
-            Authorization: Bearer <API_KEY>
-
-        or
-
-            x-api-key: <API_KEY>
-
-        Each provider implements this differently.
+        Returns the endpoint for this request.
         """
-        raise NotImplementedError
+        pass
 
-    async def _post(
+    @abstractmethod
+    def build_payload(
+        self,
+        request: ChatRequest,
+    ) -> dict:
+        """
+        Converts ChatRequest into the provider's request format.
+        """
+        pass
+
+    @abstractmethod
+    def parse_response(
+        self,
+        request: ChatRequest,
+        response_json: dict,
+    ) -> ChatResponse:
+        """
+        Converts provider JSON into ChatResponse.
+        """
+        pass
+
+    # ---------------------------------------------------------
+    # Common helpers
+    # ---------------------------------------------------------
+
+    def build_headers(self) -> dict:
+        """
+        Default headers.
+
+        Most providers use Bearer authentication.
+        Providers with different authentication
+        can override this method.
+        """
+
+        return {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+    async def post(
         self,
         endpoint: str,
         payload: dict,
     ) -> dict:
         """
-        Send an HTTP POST request.
-
-        Parameters
-        ----------
-        endpoint:
-            API endpoint relative to base_url.
-
-        payload:
-            JSON request body.
-
-        Returns
-        -------
-        dict
-            Parsed JSON response.
+        Sends a POST request and returns JSON.
         """
 
         response = await self.client.post(
-            url=f"{self.base_url}{endpoint}",
-            headers=self._headers(),
+            endpoint,
+            headers=self.build_headers(),
             json=payload,
         )
 
-        return self._handle_response(response)
-
-    async def _get(
-        self,
-        endpoint: str,
-    ) -> dict:
-        """
-        Send an HTTP GET request.
-
-        Parameters
-        ----------
-        endpoint:
-            API endpoint relative to base_url.
-
-        Returns
-        -------
-        dict
-            Parsed JSON response.
-        """
-
-        response = await self.client.get(
-            url=f"{self.base_url}{endpoint}",
-            headers=self._headers(),
-        )
-
-        return self._handle_response(response)
-
-    def _handle_response(
-        self,
-        response: httpx.Response,
-    ) -> dict:
-        """
-        Validate the HTTP response and return the JSON body.
-
-        All providers use the same HTTP error handling logic, keeping
-        provider implementations clean.
-        """
-
-        try:
-            response.raise_for_status()
-
-        except httpx.HTTPStatusError as exc:
+        if response.is_error:
             raise RuntimeError(
-                f"Provider request failed "
-                f"({response.status_code}): "
-                f"{response.text}"
-            ) from exc
+                f"""
+        Status Code : {response.status_code}
+
+        Response :
+        {response.text}
+        """
+            )
 
         return response.json()
 
-    async def close(self) -> None:
-        """
-        Close the underlying HTTP client.
+    # ---------------------------------------------------------
+    # Generic chat workflow
+    # ---------------------------------------------------------
 
-        This should be called when the gateway shuts down to
-        release network resources.
+    async def chat(
+        self,
+        request: ChatRequest,
+    ) -> ChatResponse:
+        """
+        Generic chat workflow.
+
+        Every provider follows:
+
+            ChatRequest
+                ↓
+            build_payload()
+                ↓
+            POST
+                ↓
+            parse_response()
+                ↓
+            ChatResponse
+        """
+
+        endpoint = self.get_endpoint(request)
+
+        payload = self.build_payload(request)
+
+        response_json = await self.post(
+            endpoint=endpoint,
+            payload=payload,
+        )
+
+        return self.parse_response(
+            request,
+            response_json,
+        )
+
+    async def close(self):
+        """
+        Close the HTTP client.
         """
 
         await self.client.aclose()
+
+    @abstractmethod
+    def get_health_endpoint(self) -> str:
+        """
+        Endpoint used to verify provider health.
+        """
+        pass
+
+    async def health_check(self) -> bool:
+        """
+        Returns True if the provider is reachable.
+        """
+
+        try:
+
+            response = await self.client.get(
+                self.get_health_endpoint(),
+                headers=self.build_headers(),
+            )
+
+            response.raise_for_status()
+
+            return True
+
+        except Exception:
+
+            return False

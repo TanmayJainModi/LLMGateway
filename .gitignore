@@ -9,3 +9,6 @@ __pycache__/
 # --- Environment Variables & Secrets ---
 # (Crucial for keeping your OpenAI/Gemini API keys out of GitHub!)
 .env
+
+# Test folders
+tests

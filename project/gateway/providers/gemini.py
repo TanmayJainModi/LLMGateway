@@ -1,40 +1,69 @@
 """
-gemini.py
+Google Gemini Provider
 
-Google Gemini provider implementation.
+This provider converts the gateway's standardized request and
+response schemas into Google's Gemini Generate Content API.
 
-This provider translates the gateway's standardized request/response
-schemas into the Google Gemini REST API.
+Responsibilities
+----------------
+- Build Gemini request payloads.
+- Parse Gemini responses.
+- Define Gemini-specific endpoints.
+- Provide Gemini authentication headers.
+
+Networking, retries and HTTP communication are handled by
+BaseHTTPProvider.
 """
 
 from project.gateway.providers.http_provider import BaseHTTPProvider
 from project.gateway.schemas.common import Message, Role, Usage
 from project.gateway.schemas.request import ChatRequest
 from project.gateway.schemas.response import ChatResponse
-from dotenv import load_dotenv
-
-load_dotenv()
 
 
 class GeminiProvider(BaseHTTPProvider):
     """
-    Google Gemini implementation.
-
-    Responsible only for translating between the gateway schema
-    and Gemini's REST API.
+    Google Gemini provider implementation.
     """
 
     BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 
-    def __init__(self, api_key: str):
-        super().__init__(
-            base_url=self.BASE_URL,
-            api_key=api_key,
-        )
+    PROVIDER_NAME = "gemini"
 
-    def _headers(self) -> dict[str, str]:
+    ROLE_MAPPING = {
+        Role.USER: "user",
+        Role.ASSISTANT: "model",
+    }
+
+    # ---------------------------------------------------------
+    # Provider Endpoints
+    # ---------------------------------------------------------
+
+    def get_endpoint(
+        self,
+        request: ChatRequest,
+    ) -> str:
         """
-        Return the HTTP headers required by Gemini.
+        Returns the Generate Content endpoint.
+        """
+
+        return f"/models/{request.model}:generateContent"
+
+    def get_health_endpoint(self) -> str:
+        """
+        Lightweight endpoint used for health checks.
+        """
+
+        return "/models"
+
+    # ---------------------------------------------------------
+    # Authentication
+    # ---------------------------------------------------------
+
+    def build_headers(self) -> dict:
+        """
+        Gemini uses API-Key authentication instead of
+        Bearer authentication.
         """
 
         return {
@@ -42,89 +71,25 @@ class GeminiProvider(BaseHTTPProvider):
             "x-goog-api-key": self.api_key,
         }
 
-    async def chat(
-        self,
-        request: ChatRequest,
-    ) -> ChatResponse:
-        """
-        Execute a chat completion request.
-        """
+    # ---------------------------------------------------------
+    # Request Builder
+    # ---------------------------------------------------------
 
-        self._validate_request(request)
-
-        payload = self._build_payload(request)
-
-        response = await self._post(
-            endpoint=f"/models/{request.model}:generateContent",
-            payload=payload,
-        )
-
-        return self._parse_response(
-            request=request,
-            response=response,
-        )
-
-    async def health_check(self) -> bool:
-        """
-        Verify that Gemini is reachable.
-
-        Uses the lightweight models endpoint.
-        """
-
-        try:
-
-            await self._get("/models")
-
-            return True
-
-        except Exception:
-
-            return False
-
-    def _validate_request(
-        self,
-        request: ChatRequest,
-    ) -> None:
-        """
-        Validate the incoming ChatRequest.
-        """
-
-        if not request.model.strip():
-            raise ValueError("Model name cannot be empty.")
-
-        if not request.messages:
-            raise ValueError(
-                "At least one user message is required."
-            )
-
-        for message in request.messages:
-
-            if message.role == Role.SYSTEM:
-                raise ValueError(
-                    "SYSTEM messages are not allowed inside "
-                    "'messages'. Use 'system_prompt' instead."
-                )
-
-    def _build_payload(
+    def build_payload(
         self,
         request: ChatRequest,
     ) -> dict:
         """
-        Convert ChatRequest into Gemini's request format.
+        Convert ChatRequest into Gemini's GenerateContentRequest.
         """
 
         contents = []
-
-        role_mapping = {
-            Role.USER: "user",
-            Role.ASSISTANT: "model",
-        }
 
         for message in request.messages:
 
             contents.append(
                 {
-                    "role": role_mapping[message.role],
+                    "role": self.ROLE_MAPPING[message.role],
                     "parts": [
                         {
                             "text": message.content,
@@ -158,20 +123,24 @@ class GeminiProvider(BaseHTTPProvider):
 
         return payload
 
-    def _parse_response(
+    # ---------------------------------------------------------
+    # Response Parser
+    # ---------------------------------------------------------
+
+    def parse_response(
         self,
         request: ChatRequest,
-        response: dict,
+        response_json: dict,
     ) -> ChatResponse:
         """
         Convert Gemini's JSON response into ChatResponse.
         """
 
-        candidates = response.get("candidates")
+        candidates = response_json.get("candidates")
 
         if not candidates:
             raise RuntimeError(
-                "Gemini returned no response candidates."
+                "Gemini returned no candidates."
             )
 
         candidate = candidates[0]
@@ -180,19 +149,19 @@ class GeminiProvider(BaseHTTPProvider):
 
         if content is None:
             raise RuntimeError(
-                "Gemini response is missing content."
+                "Gemini response missing content."
             )
 
-        parts = content.get("parts")
+        parts = content.get("parts", [])
 
         if not parts:
             raise RuntimeError(
-                "Gemini response contains no parts."
+                "Gemini response contains no text."
             )
 
         text = parts[0].get("text", "")
 
-        usage_metadata = response.get(
+        usage_metadata = response_json.get(
             "usageMetadata",
             {},
         )
@@ -213,7 +182,7 @@ class GeminiProvider(BaseHTTPProvider):
         )
 
         return ChatResponse(
-            provider="gemini",
+            provider=self.PROVIDER_NAME,
             model=request.model,
             message=Message(
                 role=Role.ASSISTANT,

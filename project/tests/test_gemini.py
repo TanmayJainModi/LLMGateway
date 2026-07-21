@@ -2,24 +2,32 @@ import asyncio
 import os
 
 from project.gateway.providers.gemini import GeminiProvider
+from project.gateway.providers.groq import GroqProvider
+from project.gateway.providers.openai import OpenAIProvider
+from project.gateway.providers.anthropic import AnthropicProvider
 from project.gateway.schemas.common import Message, Role
 from project.gateway.schemas.request import ChatRequest
+from project.gateway.providers.ollama import OllamaProvider
 
 
-API_KEY = os.getenv("GEMINI_API_KEY")
+from dotenv import load_dotenv
+
+load_dotenv()
+API_KEY = os.getenv("OLLAMA_API_KEY")
+print("API KEY:", repr(API_KEY))
 
 
 async def main():
 
-    provider = GeminiProvider(API_KEY)
+    provider = OllamaProvider(API_KEY)
 
     request = ChatRequest(
-        model="gemini-2.5-flash",
+        model="gemma4",
         system_prompt="You are a helpful assistant.",
         messages=[
             Message(
                 role=Role.USER,
-                content="Who are you?"
+                content="Who are you?Are you Ollama or Gemini? And what model am I using currently ? what are the models which I can use without a subscription"
             )
         ],
         temperature=0.7,

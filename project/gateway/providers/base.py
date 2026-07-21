@@ -17,35 +17,33 @@ class BaseProvider(ABC):
     """
     Abstract base class for every LLM provider.
 
-    Every provider must implement these methods so that the gateway
-    can interact with all providers through one common interface.
+    Stores the provider API key and defines the common interface
+    implemented by all providers.
     """
 
-    @abstractmethod
-    async def chat(self, request: ChatRequest) -> ChatResponse:
+    def __init__(self, api_key: str):
         """
-        Send a chat completion request to the provider.
+        Store the provider API key.
 
-        Parameters
-        ----------
-        request : ChatRequest
-            Standardized gateway request.
+        Every provider authenticates differently, but every provider
+        needs access to an API key.
+        """
 
-        Returns
-        -------
-        ChatResponse
-            Standardized gateway response.
+        self.api_key = api_key
+
+    @abstractmethod
+    async def chat(
+        self,
+        request: ChatRequest,
+    ) -> ChatResponse:
+        """
+        Execute a chat completion request.
         """
         raise NotImplementedError
 
     @abstractmethod
     async def health_check(self) -> bool:
         """
-        Check whether the provider is reachable.
-
-        Returns
-        -------
-        bool
-            True if the provider is healthy, otherwise False.
+        Verify that the provider is reachable.
         """
         raise NotImplementedError
