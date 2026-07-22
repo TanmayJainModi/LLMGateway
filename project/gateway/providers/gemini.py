@@ -102,6 +102,10 @@ class GeminiProvider(BaseHTTPProvider):
             "contents": contents,
             "generationConfig": {
                 "temperature": request.temperature,
+                #"thinkingConfig": {
+                #    "thinkingBudget": 0
+                #}
+                
             },
         }
 
@@ -180,6 +184,12 @@ class GeminiProvider(BaseHTTPProvider):
                 0,
             ),
         )
+
+        '''
+        import json
+
+        print(json.dumps(response_json, indent=2))
+        '''
 
         return ChatResponse(
             provider=self.PROVIDER_NAME,

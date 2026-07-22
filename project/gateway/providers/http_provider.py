@@ -129,7 +129,11 @@ class BaseHTTPProvider(BaseProvider):
         {response.text}
         """
             )
+        '''
+        import json
 
+        print(json.dumps(payload, indent=2))
+        '''
         return response.json()
 
     # ---------------------------------------------------------

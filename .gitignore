@@ -11,4 +11,8 @@ __pycache__/
 .env
 
 # Test folders
-tests
+tests/
+
+# Data Folder
+data/
+database/seed.sql
