@@ -1,0 +1,31 @@
+global:
+  resolve_timeout: 5m
+  slack_api_url: 'https://hooks.slack.com/services/CHANGE_ME/WEBHOOK_URL'
+
+route:
+  group_by: ['alertname', 'team_id', 'provider_served', 'provider']
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 1h
+  receiver: 'slack-notifications'
+
+receivers:
+  - name: 'slack-notifications'
+    slack_configs:
+      - channel: '#llm-gateway-alerts'
+        send_resolved: true
+        icon_emoji: ':robot_face:'
+        username: 'LLM-Gateway-Alertmanager'
+        title: '{{ if eq .Status "firing" }}🚨 [FIRING:{{ .Alerts.Firing | len }}]{{ else }}✅ [RESOLVED]{{ end }} {{ .GroupLabels.alertname }}'
+        text: |
+          *Alert:* {{ .GroupLabels.alertname }}
+          *Status:* {{ if eq .Status "firing" }}🚨 FIRING{{ else }}✅ RESOLVED{{ end }}
+          {{ range .Alerts }}
+          ───────────────
+          *What Happened:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          *Affected Team:* {{ index .Labels "team_id" }}
+          *Provider / Model:* {{ index .Labels "provider_served" }} / {{ index .Labels "model_served" }}
+          *Severity:* {{ .Labels.severity }}
+          *Auto-Fallback Status:* {{ .Annotations.fallback_status }}
+          {{ end }}

@@ -15,6 +15,7 @@ from project.gateway.providers.http_provider import BaseHTTPProvider
 from project.gateway.schemas.common import Message, Role, Usage
 from project.gateway.schemas.request import ChatRequest
 from project.gateway.schemas.response import ChatResponse
+from project.gateway.schemas.stream import StreamChunk
 
 load_dotenv()
 
@@ -28,6 +29,7 @@ class OllamaProvider(BaseHTTPProvider):
     """
 
     BASE_URL = "https://ollama.com/api"
+    PROVIDER_NAME = "ollama"
 
     def __init__(
         self,
@@ -97,7 +99,7 @@ class OllamaProvider(BaseHTTPProvider):
         payload = {
             "model": request.model,
             "prompt": "\n".join(prompt_parts),
-            "stream": False,
+            "stream": request.stream,
             "options": {
                 "temperature": request.temperature,
             },
@@ -139,7 +141,7 @@ class OllamaProvider(BaseHTTPProvider):
         )
 
         return ChatResponse(
-            provider="ollama",
+            provider=self.PROVIDER_NAME,
             model=request.model,
             message=Message(
                 role=Role.ASSISTANT,
@@ -150,3 +152,40 @@ class OllamaProvider(BaseHTTPProvider):
             ),
             usage=usage,
         )
+
+    def parse_stream_chunk(
+        self,
+        request: ChatRequest,
+        response_json: dict,
+    ) -> StreamChunk | None:
+        """
+        Convert Ollama streaming JSON chunk into StreamChunk.
+        """
+
+        text = response_json.get("response", "") or ""
+        if not text and "message" in response_json:
+            text = response_json.get("message", {}).get("content", "") or ""
+
+        done = response_json.get("done", False)
+        finish_reason = "stop" if done else None
+
+        usage = None
+        if done and ("prompt_eval_count" in response_json or "eval_count" in response_json):
+            prompt_tokens = response_json.get("prompt_eval_count", 0)
+            eval_tokens = response_json.get("eval_count", 0)
+            usage = Usage(
+                input_tokens=prompt_tokens,
+                output_tokens=eval_tokens,
+                total_tokens=prompt_tokens + eval_tokens,
+            )
+
+        if text or finish_reason or usage:
+            return StreamChunk(
+                provider=self.PROVIDER_NAME,
+                model=request.model,
+                content=text,
+                finish_reason=finish_reason,
+                usage=usage,
+            )
+
+        return None

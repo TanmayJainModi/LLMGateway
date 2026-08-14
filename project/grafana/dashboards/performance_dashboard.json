@@ -1,0 +1,184 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 4, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "title": "Total Request Throughput (Req/sec)",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "sum(rate(llm_gateway_requests_total{team_id=~\"$team_id\", provider_served=~\"$provider\", model_served=~\"$model\"}[1m])) or vector(0)",
+          "legendFormat": "Requests/sec",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": { "mode": "palette-classic" }
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 4, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "title": "Total Token Throughput (Tokens/sec)",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "sum(rate(llm_gateway_tokens_total{team_id=~\"$team_id\", provider_served=~\"$provider\", model_served=~\"$model\"}[1m])) or vector(0)",
+          "legendFormat": "Tokens/sec",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "cps",
+          "color": { "mode": "palette-classic" }
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "id": 3,
+      "title": "Overall Latency Percentiles (P50, P95, P99)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(llm_gateway_request_duration_seconds_bucket{provider_served=~\"$provider\", model_served=~\"$model\"}[5m])))",
+          "legendFormat": "P50 Latency",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(llm_gateway_request_duration_seconds_bucket{provider_served=~\"$provider\", model_served=~\"$model\"}[5m])))",
+          "legendFormat": "P95 Latency",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(llm_gateway_request_duration_seconds_bucket{provider_served=~\"$provider\", model_served=~\"$model\"}[5m])))",
+          "legendFormat": "P99 Latency",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "id": 4,
+      "title": "P95 Latency by Provider",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, provider_served) (rate(llm_gateway_request_duration_seconds_bucket{provider_served=~\"$provider\"}[5m])))",
+          "legendFormat": "{{provider_served}} P95",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "id": 5,
+      "title": "Input vs Output Token Throughput by Provider",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (token_type, provider_served) (rate(llm_gateway_tokens_total{team_id=~\"$team_id\", provider_served=~\"$provider\"}[1m]))",
+          "legendFormat": "{{provider_served}} [{{token_type}}]",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "cps"
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "id": 6,
+      "title": "Token Throughput by Team",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (team_id, token_type) (rate(llm_gateway_tokens_total{team_id=~\"$team_id\"}[1m]))",
+          "legendFormat": "Team {{team_id}} [{{token_type}}]",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "cps"
+        }
+      }
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["llm-gateway", "performance", "latency", "throughput"],
+  "templating": {
+    "list": [
+      {
+        "current": { "text": "All", "value": "$__all" },
+        "includeAll": true,
+        "label": "Team ID",
+        "name": "team_id",
+        "options": [],
+        "query": "label_values(llm_gateway_requests_total, team_id)",
+        "type": "query"
+      },
+      {
+        "current": { "text": "All", "value": "$__all" },
+        "includeAll": true,
+        "label": "Provider",
+        "name": "provider",
+        "options": [],
+        "query": "label_values(llm_gateway_requests_total, provider_served)",
+        "type": "query"
+      },
+      {
+        "current": { "text": "All", "value": "$__all" },
+        "includeAll": true,
+        "label": "Model",
+        "name": "model",
+        "options": [],
+        "query": "label_values(llm_gateway_requests_total, model_served)",
+        "type": "query"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": ["5s", "10s", "30s", "1m"]
+  },
+  "timezone": "browser",
+  "title": "LLM Gateway - Performance Dashboard",
+  "uid": "llm-gateway-performance"
+}

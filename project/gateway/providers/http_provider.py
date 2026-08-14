@@ -9,19 +9,22 @@ Every provider only needs to implement:
     - get_endpoint()
     - build_payload()
     - parse_response()
+    - parse_stream_chunk()
 
 Everything else (authentication, HTTP requests, response status
-checking, etc.) is handled here.
+checking, streaming SSE parsing, etc.) is handled here.
 """
 
-from project.gateway.schemas import response
 from abc import abstractmethod
+import json
+from typing import AsyncGenerator
 
 import httpx
 
 from project.gateway.providers.base import BaseProvider
 from project.gateway.schemas.request import ChatRequest
 from project.gateway.schemas.response import ChatResponse
+from project.gateway.schemas.stream import StreamChunk, StreamResult
 
 
 class BaseHTTPProvider(BaseProvider):
@@ -33,12 +36,14 @@ class BaseHTTPProvider(BaseProvider):
         - Authorization
         - Sending requests
         - Error checking
+        - Streaming SSE/JSON parsing
 
     Leaves provider-specific request/response translation
     to subclasses.
     """
 
     BASE_URL: str = ""
+    PROVIDER_NAME: str = ""
 
     def __init__(
         self,
@@ -51,6 +56,7 @@ class BaseHTTPProvider(BaseProvider):
             base_url=self.BASE_URL,
             timeout=timeout,
         )
+        self.stream_result: StreamResult | None = None
 
     # ---------------------------------------------------------
     # Abstract methods every provider must implement
@@ -86,6 +92,27 @@ class BaseHTTPProvider(BaseProvider):
         Converts provider JSON into ChatResponse.
         """
         pass
+
+    @abstractmethod
+    def parse_stream_chunk(
+        self,
+        request: ChatRequest,
+        response_json: dict,
+    ) -> StreamChunk | None:
+        """
+        Converts provider streaming JSON chunk into StreamChunk.
+        """
+        pass
+
+    def get_stream_endpoint(
+        self,
+        request: ChatRequest,
+    ) -> str:
+        """
+        Returns the endpoint used for streaming.
+        Defaults to get_endpoint(request).
+        """
+        return self.get_endpoint(request)
 
     # ---------------------------------------------------------
     # Common helpers
@@ -129,11 +156,6 @@ class BaseHTTPProvider(BaseProvider):
         {response.text}
         """
             )
-        '''
-        import json
-
-        print(json.dumps(payload, indent=2))
-        '''
         return response.json()
 
     # ---------------------------------------------------------
@@ -173,6 +195,73 @@ class BaseHTTPProvider(BaseProvider):
             request,
             response_json,
         )
+
+    async def chat_stream(
+        self,
+        request: ChatRequest,
+    ) -> AsyncGenerator[StreamChunk, None]:
+        """
+        Generic streaming workflow.
+
+        Opens HTTP stream, reads SSE / JSON lines, invokes
+        parse_stream_chunk, yields StreamChunk, and accumulates
+        stream_result internally.
+        """
+
+        endpoint = self.get_stream_endpoint(request)
+
+        payload = self.build_payload(request)
+
+        headers = self.build_headers()
+
+        self.stream_result = StreamResult(
+            provider=getattr(self, "PROVIDER_NAME", "unknown"),
+            model=request.model,
+            full_text="",
+            usage=None,
+            finish_reason=None,
+        )
+
+        async with self.client.stream(
+            "POST",
+            endpoint,
+            headers=headers,
+            json=payload,
+        ) as response:
+            if response.is_error:
+                error_bytes = await response.aread()
+                raise RuntimeError(
+                    f"Status Code : {response.status_code}\n\nResponse :\n{error_bytes.decode('utf-8')}"
+                )
+
+            async for line in response.aiter_lines():
+                line = line.strip()
+                if not line or line.startswith("event:"):
+                    continue
+
+                if line.startswith("data:"):
+                    line = line[5:].strip()
+
+                if line == "[DONE]":
+                    break
+
+                if not line:
+                    continue
+
+                try:
+                    data = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+                chunk = self.parse_stream_chunk(request, data)
+                if chunk is not None:
+                    if chunk.content:
+                        self.stream_result.full_text += chunk.content
+                    if chunk.usage is not None:
+                        self.stream_result.usage = chunk.usage
+                    if chunk.finish_reason is not None:
+                        self.stream_result.finish_reason = chunk.finish_reason
+                    yield chunk
 
     async def close(self):
         """

@@ -32,7 +32,7 @@ class TeamRepository:
         input_tokens: int,
         output_tokens: int,
         estimated_cost: float,
-    ):
+    ) -> dict:
         pool = await get_pool()
 
         async with pool.acquire() as conn:
@@ -59,13 +59,37 @@ class TeamRepository:
                     estimated_cost,
                 )
 
-                await conn.execute(
-                    """
-                    UPDATE teams
-                    SET monthly_spend =
-                        monthly_spend + $1
-                    WHERE id=$2
-                    """,
-                    estimated_cost,
+                team = await conn.fetchrow(
+                    "SELECT monthly_budget, monthly_spend, daily_budget, daily_spend, daily_spend_date FROM teams WHERE id=$1",
                     team_id,
                 )
+
+                from datetime import date
+                today = date.today()
+
+                if team["daily_spend_date"] != today:
+                    new_daily_spend = float(estimated_cost)
+                else:
+                    new_daily_spend = float(team["daily_spend"] or 0) + float(estimated_cost)
+
+                updated_team = await conn.fetchrow(
+                    """
+                    UPDATE teams
+                    SET monthly_spend = monthly_spend + $1,
+                        daily_spend = $2,
+                        daily_spend_date = $3
+                    WHERE id = $4
+                    RETURNING monthly_spend, monthly_budget, daily_spend, daily_budget
+                    """,
+                    estimated_cost,
+                    new_daily_spend,
+                    today,
+                    team_id,
+                )
+
+                return {
+                    "monthly_spend": float(updated_team["monthly_spend"]),
+                    "monthly_budget": float(updated_team["monthly_budget"]) if updated_team["monthly_budget"] is not None else None,
+                    "daily_spend": float(updated_team["daily_spend"]),
+                    "daily_budget": float(updated_team["daily_budget"]) if updated_team["daily_budget"] is not None else None,
+                }

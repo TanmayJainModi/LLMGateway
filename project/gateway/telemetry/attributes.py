@@ -1,0 +1,27 @@
+"""
+attributes.py
+
+Standardized OpenTelemetry attribute keys for the LLM Gateway.
+"""
+
+TEAM_ID = "gateway.team_id"
+TEAM_NAME = "gateway.team_name"
+PROVIDER_REQUESTED = "gateway.provider_requested"
+MODEL_REQUESTED = "gateway.model_requested"
+PROVIDER_SERVED = "gateway.provider_served"
+MODEL_SERVED = "gateway.model_served"
+INPUT_TOKENS = "llm.usage.input_tokens"
+OUTPUT_TOKENS = "llm.usage.output_tokens"
+TOTAL_TOKENS = "llm.usage.total_tokens"
+LATENCY_MS = "gateway.latency_ms"
+ESTIMATED_COST = "gateway.estimated_cost_usd"
+REQUEST_TYPE = "gateway.request_type"
+PRIORITY_LEVEL = "gateway.priority_level"
+RESERVE_PCT = "gateway.reserve_pct"
+QUEUE_WAIT_MS = "gateway.queue_wait_ms"
+FALLBACK_USED = "gateway.fallback_used"
+RETRY_COUNT = "gateway.retry_count"
+CIRCUIT_STATE = "gateway.circuit_state"
+CIRCUIT_ALLOWED = "gateway.circuit_allowed"
+BUDGET_WARNING = "gateway.budget_warning"
+HTTP_STATUS = "http.status_code"

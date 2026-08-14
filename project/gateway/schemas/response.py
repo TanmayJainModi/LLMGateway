@@ -6,3 +6,6 @@ class ChatResponse(BaseModel):
     model: str
     message: Message
     usage: Usage
+    warning: str | None = None
+    fallback_metadata: dict | None = None
+

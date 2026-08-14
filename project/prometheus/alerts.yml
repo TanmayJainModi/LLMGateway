@@ -1,0 +1,64 @@
+groups:
+  - name: llm_gateway_alerts
+    rules:
+      # 1. Provider Error Rate High (> 5% over 5m)
+      - alert: ProviderErrorRateHigh
+        expr: >-
+          100 * (
+            sum by (team_id, provider_served, model_served) (rate(llm_gateway_errors_total[5m]))
+            /
+            sum by (team_id, provider_served, model_served) (rate(llm_gateway_requests_total[5m]))
+          ) > 5
+        for: 2m
+        labels:
+          severity: critical
+          service: llm-gateway
+        annotations:
+          summary: "High error rate on {{ $labels.provider_served }}/{{ $labels.model_served }} for team {{ $labels.team_id }}"
+          description: "Provider {{ $labels.provider_served }} error rate is {{ $value | printf \"%.2f\" }}% over the last 5 minutes for team {{ $labels.team_id }}."
+          fallback_status: "Check automatic fallback status for {{ $labels.provider_served }}"
+
+      # 2. Team Approaching 24h Rolling Budget Cap (>= 80%)
+      - alert: TeamApproachingBudgetCap
+        expr: >-
+          100 * (
+            sum by (team_id) (increase(llm_gateway_cost_usd_total[24h]))
+            /
+            on(team_id) llm_gateway_team_budget_usd{period="daily"}
+          ) >= 80
+        for: 1m
+        labels:
+          severity: warning
+          service: llm-gateway
+        annotations:
+          summary: "Team {{ $labels.team_id }} approaching 24h budget limit"
+          description: "Team {{ $labels.team_id }} has spent {{ $value | printf \"%.2f\" }}% of their configured 24h daily budget cap."
+          fallback_status: "Not Applicable (Budget Management)"
+
+      # 3. Latency P99 Above SLA (> 5.0s over 5m)
+      - alert: LatencyP99AboveSLA
+        expr: >-
+          histogram_quantile(
+            0.99,
+            sum by (le, provider_served, model_served) (rate(llm_gateway_request_duration_seconds_bucket[5m]))
+          ) > 5.0
+        for: 2m
+        labels:
+          severity: warning
+          service: llm-gateway
+        annotations:
+          summary: "P99 latency above 5s SLA on {{ $labels.provider_served }}/{{ $labels.model_served }}"
+          description: "Provider {{ $labels.provider_served }} (model: {{ $labels.model_served }}) P99 latency is {{ $value | printf \"%.2f\" }}s over the last 5 minutes."
+          fallback_status: "High latency detected; monitor automatic fallback triggers"
+
+      # 4. Circuit Breaker Opened (State == 2)
+      - alert: CircuitBreakerOpened
+        expr: llm_gateway_circuit_breaker_state == 2
+        for: 0m
+        labels:
+          severity: critical
+          service: llm-gateway
+        annotations:
+          summary: "Circuit breaker OPEN for {{ $labels.provider }}/{{ $labels.model }}"
+          description: "Circuit breaker tripped to OPEN state for {{ $labels.provider }} (model: {{ $labels.model }}). Traffic to this provider is bypassed."
+          fallback_status: "ACTIVE (Traffic automatically routed to healthy secondary fallback provider)"

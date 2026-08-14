@@ -8,9 +8,11 @@ provider-specific implementations such as GeminiProvider or OpenAIProvider.
 """
 
 from abc import ABC, abstractmethod
+from typing import AsyncGenerator
 
 from project.gateway.schemas.request import ChatRequest
 from project.gateway.schemas.response import ChatResponse
+from project.gateway.schemas.stream import StreamChunk
 
 
 class BaseProvider(ABC):
@@ -38,6 +40,16 @@ class BaseProvider(ABC):
     ) -> ChatResponse:
         """
         Execute a chat completion request.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    async def chat_stream(
+        self,
+        request: ChatRequest,
+    ) -> AsyncGenerator[StreamChunk, None]:
+        """
+        Execute a streaming chat completion request.
         """
         raise NotImplementedError
 

@@ -1,0 +1,206 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "id": 1,
+      "title": "Total Spend (24h)",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "sum(increase(llm_gateway_cost_usd_total{team_id=~\"$team_id\"}[24h])) or vector(0)",
+          "legendFormat": "Spend 24h",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "color": { "mode": "palette-classic" }
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "id": 2,
+      "title": "Total Spend (30d - Rolling)",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "sum(increase(llm_gateway_cost_usd_total{team_id=~\"$team_id\"}[30d])) or vector(0)",
+          "legendFormat": "Spend 30d",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "color": { "mode": "palette-classic" }
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "id": 3,
+      "title": "Daily Budget Utilization %",
+      "type": "bargauge",
+      "targets": [
+        {
+          "expr": "100 * (sum by (team_id) (increase(llm_gateway_cost_usd_total{team_id=~\"$team_id\"}[24h])) / on(team_id) llm_gateway_team_budget_usd{period=\"daily\", team_id=~\"$team_id\"})",
+          "legendFormat": "{{team_id}} Daily Util %",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 80 },
+              { "color": "red", "value": 100 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "id": 4,
+      "title": "Monthly Budget Utilization %",
+      "type": "bargauge",
+      "targets": [
+        {
+          "expr": "100 * (sum by (team_id) (increase(llm_gateway_cost_usd_total{team_id=~\"$team_id\"}[30d])) / on(team_id) llm_gateway_team_budget_usd{period=\"monthly\", team_id=~\"$team_id\"})",
+          "legendFormat": "{{team_id}} Monthly Util %",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 80 },
+              { "color": "red", "value": 100 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "id": 5,
+      "title": "24h Spend Breakdown by Team",
+      "type": "piechart",
+      "targets": [
+        {
+          "expr": "sum by (team_id) (increase(llm_gateway_cost_usd_total{team_id=~\"$team_id\"}[24h]))",
+          "legendFormat": "Team {{team_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD"
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "id": 6,
+      "title": "24h Spend by Served Model",
+      "type": "barchart",
+      "targets": [
+        {
+          "expr": "sum by (model_served) (increase(llm_gateway_cost_usd_total{team_id=~\"$team_id\", model_served=~\"$model\"}[24h]))",
+          "legendFormat": "{{model_served}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD"
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
+      "id": 7,
+      "title": "Request Usage Trends by Team & Requested Model",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (team_id, model_requested) (rate(llm_gateway_requests_total{team_id=~\"$team_id\", model_requested=~\"$model\"}[5m]))",
+          "legendFormat": "{{team_id}} - {{model_requested}}",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["llm-gateway", "business", "billing", "cost"],
+  "templating": {
+    "list": [
+      {
+        "current": { "text": "All", "value": "$__all" },
+        "includeAll": true,
+        "label": "Team ID",
+        "name": "team_id",
+        "options": [],
+        "query": "label_values(llm_gateway_requests_total, team_id)",
+        "type": "query"
+      },
+      {
+        "current": { "text": "All", "value": "$__all" },
+        "includeAll": true,
+        "label": "Provider",
+        "name": "provider",
+        "options": [],
+        "query": "label_values(llm_gateway_requests_total, provider_served)",
+        "type": "query"
+      },
+      {
+        "current": { "text": "All", "value": "$__all" },
+        "includeAll": true,
+        "label": "Model",
+        "name": "model",
+        "options": [],
+        "query": "label_values(llm_gateway_requests_total, model_served)",
+        "type": "query"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": ["10s", "30s", "1m", "5m"]
+  },
+  "timezone": "browser",
+  "title": "LLM Gateway - Business & Billing Dashboard",
+  "uid": "llm-gateway-business"
+}

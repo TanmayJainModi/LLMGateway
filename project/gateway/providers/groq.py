@@ -11,6 +11,7 @@ from project.gateway.providers.http_provider import BaseHTTPProvider
 from project.gateway.schemas.common import Message, Role, Usage
 from project.gateway.schemas.request import ChatRequest
 from project.gateway.schemas.response import ChatResponse
+from project.gateway.schemas.stream import StreamChunk
 
 
 class GroqProvider(BaseHTTPProvider):
@@ -85,6 +86,9 @@ class GroqProvider(BaseHTTPProvider):
             "stream": request.stream,
         }
 
+        if request.stream:
+            payload["stream_options"] = {"include_usage": True}
+
         if request.max_tokens is not None:
 
             payload["max_completion_tokens"] = request.max_tokens
@@ -92,7 +96,7 @@ class GroqProvider(BaseHTTPProvider):
         return payload
 
     # ---------------------------------------------------------
-    # Response Parser
+    # Response Parsers
     # ---------------------------------------------------------
 
     def parse_response(
@@ -149,4 +153,47 @@ class GroqProvider(BaseHTTPProvider):
             usage=usage,
         )
 
-        
+    def parse_stream_chunk(
+        self,
+        request: ChatRequest,
+        response_json: dict,
+    ) -> StreamChunk | None:
+        """
+        Convert Groq streaming JSON chunk into StreamChunk.
+        """
+
+        choices = response_json.get("choices", [])
+        usage_json = response_json.get("usage")
+
+        usage = None
+        if usage_json:
+            usage = Usage(
+                input_tokens=usage_json.get("prompt_tokens", 0),
+                output_tokens=usage_json.get("completion_tokens", 0),
+                total_tokens=usage_json.get("total_tokens", 0),
+            )
+
+        if choices:
+            choice = choices[0]
+            delta = choice.get("delta", {})
+            content = delta.get("content", "") or ""
+            finish_reason = choice.get("finish_reason")
+
+            if content or finish_reason or usage:
+                return StreamChunk(
+                    provider=self.PROVIDER_NAME,
+                    model=request.model,
+                    content=content,
+                    finish_reason=finish_reason,
+                    usage=usage,
+                )
+        elif usage:
+            return StreamChunk(
+                provider=self.PROVIDER_NAME,
+                model=request.model,
+                content="",
+                finish_reason=None,
+                usage=usage,
+            )
+
+        return None

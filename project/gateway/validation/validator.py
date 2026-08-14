@@ -30,27 +30,18 @@ from project.gateway.validation.exceptions import (
 )
 
 
+from project.gateway.telemetry.tracer import gateway_tracer
+import project.gateway.telemetry.attributes as attrs
+
+
 class Validator:
     """
     Performs all gateway validation checks.
-
-    Validation order:
-
-        1. Team API key
-        2. Provider exists
-        3. Provider enabled
-        4. Model exists
-        5. Model enabled
-        6. Team has access
-        7. Budget check
     """
 
     def __init__(self):
-
         self.team_repository = TeamRepository()
-
         self.provider_repository = ProviderRepository()
-
         self.model_repository = ModelRepository()
 
     async def validate(
@@ -58,40 +49,49 @@ class Validator:
         team_api_key: str,
         provider_name: str,
         model_name: str,
+        estimated_cost: float = 0.0,
     ) -> ValidationResult:
         """
         Validate an incoming gateway request.
-
-        Returns
-        -------
-        ValidationResult
         """
+        with gateway_tracer.start_span("authentication") as span:
+            team = await self._validate_team(team_api_key)
 
-        team = await self._validate_team(team_api_key)
+            gateway_tracer.set_attributes(
+                span,
+                {
+                    attrs.TEAM_ID: team["id"],
+                    attrs.TEAM_NAME: team["name"],
+                    attrs.PROVIDER_REQUESTED: provider_name,
+                    attrs.MODEL_REQUESTED: model_name,
+                    "gateway.auth_success": True,
+                },
+            )
 
-        provider = await self._validate_provider(
-            provider_name,
-        )
+            provider = await self._validate_provider(
+                provider_name,
+            )
 
-        model = await self._validate_model(
-            provider_name=provider_name,
-            model_name=model_name,
-        )
+            model = await self._validate_model(
+                provider_name=provider_name,
+                model_name=model_name,
+            )
 
-        team_access = await self._validate_team_access(
-            team_id=team["id"],
-            model_id=model["id"],
-        )
+            team_access = await self._validate_team_access(
+                team_id=team["id"],
+                model_id=model["id"],
+            )
 
-        await self._validate_budget(team)
+            await self._validate_budget(team, estimated_cost)
 
-        return ValidationResult(
-            allowed=True,
-            team=team,
-            provider=provider,
-            model=model,
-            team_model_access=team_access,
-        )
+            return ValidationResult(
+                allowed=True,
+                team=team,
+                provider=provider,
+                model=model,
+                team_model_access=team_access,
+            )
+
 
     async def _validate_team(
         self,
@@ -178,16 +178,43 @@ class Validator:
             )
 
         return access
-        
+
     async def _validate_budget(
         self,
         team,
+        estimated_cost: float = 0.0,
     ):
         """
-        Validate the team's monthly budget.
+        Validate the team's monthly and daily budget caps (pre-flight check).
         """
+        from datetime import date
 
-        if team["monthly_spend"] >= team["monthly_budget"]:
+        monthly_spend = float(team["monthly_spend"] or 0)
+        monthly_budget = float(team["monthly_budget"])
+
+        if (monthly_spend + estimated_cost) > monthly_budget:
             raise BudgetExceededError(
-                "Monthly budget exceeded."
+                message=f"Monthly budget cap exceeded (${monthly_spend + estimated_cost:.4f} / ${monthly_budget:.2f}).",
+                budget_type="monthly",
+                limit=monthly_budget,
+                current_spend=monthly_spend,
+                estimated_cost=estimated_cost,
             )
+
+        if team.get("daily_budget") is not None:
+            daily_budget = float(team["daily_budget"])
+            today = date.today()
+
+            if team.get("daily_spend_date") != today:
+                effective_daily_spend = 0.0
+            else:
+                effective_daily_spend = float(team.get("daily_spend") or 0)
+
+            if (effective_daily_spend + estimated_cost) > daily_budget:
+                raise BudgetExceededError(
+                    message=f"Daily budget cap exceeded (${effective_daily_spend + estimated_cost:.4f} / ${daily_budget:.2f}).",
+                    budget_type="daily",
+                    limit=daily_budget,
+                    current_spend=effective_daily_spend,
+                    estimated_cost=estimated_cost,
+                )

@@ -1,0 +1,240 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "id": 1,
+      "title": "Open Circuits Count",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "count(llm_gateway_circuit_breaker_state{provider=~\"$provider\", model=~\"$model\"} == 2) or vector(0)",
+          "legendFormat": "Open Circuits",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "id": 2,
+      "title": "Overall Error Rate %",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "100 * (sum(rate(llm_gateway_errors_total{team_id=~\"$team_id\", provider_served=~\"$provider\"}[5m])) or vector(0)) / sum(rate(llm_gateway_requests_total{team_id=~\"$team_id\", provider_served=~\"$provider\"}[5m]))",
+          "legendFormat": "Error %",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 2 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "id": 3,
+      "title": "Request Success Rate %",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "100 * (1 - ((sum(rate(llm_gateway_errors_total{team_id=~\"$team_id\", provider_served=~\"$provider\"}[5m])) or vector(0)) / sum(rate(llm_gateway_requests_total{team_id=~\"$team_id\", provider_served=~\"$provider\"}[5m]))))",
+          "legendFormat": "Success %",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 95 },
+              { "color": "green", "value": 98 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "id": 4,
+      "title": "Fallback Traffic %",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "100 * (sum(rate(llm_gateway_fallbacks_total{team_id=~\"$team_id\"}[5m])) or vector(0)) / sum(rate(llm_gateway_requests_total{team_id=~\"$team_id\"}[5m]))",
+          "legendFormat": "Fallback %",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "id": 5,
+      "title": "Circuit Breaker State Gauge",
+      "type": "gauge",
+      "targets": [
+        {
+          "expr": "llm_gateway_circuit_breaker_state{provider=~\"$provider\", model=~\"$model\"}",
+          "legendFormat": "{{provider}} - {{model}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 2,
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": { "text": "CLOSED (Normal)", "color": "green" },
+                "1": { "text": "HALF_OPEN (Canary)", "color": "yellow" },
+                "2": { "text": "OPEN (Bypassed)", "color": "red" }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "id": 6,
+      "title": "Errors by Provider & Type",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (provider_served, error_type) (rate(llm_gateway_errors_total{team_id=~\"$team_id\", provider_served=~\"$provider\"}[5m]))",
+          "legendFormat": "{{provider_served}} [{{error_type}}]",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "id": 7,
+      "title": "Fallback Events by Route",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (primary_provider, fallback_provider) (rate(llm_gateway_fallbacks_total{team_id=~\"$team_id\"}[5m]))",
+          "legendFormat": "{{primary_provider}} -> {{fallback_provider}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "id": 8,
+      "title": "Circuit Breaker State Transitions (1h)",
+      "type": "barchart",
+      "targets": [
+        {
+          "expr": "sum by (provider, model, from_state, to_state) (increase(llm_gateway_circuit_breaker_state_changes_total{provider=~\"$provider\", model=~\"$model\"}[1h]))",
+          "legendFormat": "{{provider}}:{{model}} ({{from_state}} -> {{to_state}})",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["llm-gateway", "operations", "circuit-breaker", "health"],
+  "templating": {
+    "list": [
+      {
+        "current": { "text": "All", "value": "$__all" },
+        "includeAll": true,
+        "label": "Team ID",
+        "name": "team_id",
+        "options": [],
+        "query": "label_values(llm_gateway_requests_total, team_id)",
+        "type": "query"
+      },
+      {
+        "current": { "text": "All", "value": "$__all" },
+        "includeAll": true,
+        "label": "Provider",
+        "name": "provider",
+        "options": [],
+        "query": "label_values(llm_gateway_requests_total, provider_served)",
+        "type": "query"
+      },
+      {
+        "current": { "text": "All", "value": "$__all" },
+        "includeAll": true,
+        "label": "Model",
+        "name": "model",
+        "options": [],
+        "query": "label_values(llm_gateway_requests_total, model_served)",
+        "type": "query"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": ["5s", "10s", "30s", "1m"]
+  },
+  "timezone": "browser",
+  "title": "LLM Gateway - Operations Dashboard",
+  "uid": "llm-gateway-operations"
+}

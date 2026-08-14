@@ -1,5 +1,12 @@
+from enum import Enum
 from pydantic import BaseModel, Field
 from project.gateway.schemas.common import Message
+
+
+class RequestType(str, Enum):
+    STREAM = "stream"
+    CHAT = "chat"
+    BATCH = "batch"
 
 
 class ChatRequest(BaseModel):
@@ -9,3 +16,4 @@ class ChatRequest(BaseModel):
     temperature: float = 0.7
     max_tokens: int | None = None
     stream: bool = False
+    request_type: RequestType | None = None
